@@ -2,6 +2,8 @@ import torch
 from torch import nn
 import numpy as np
 import importlib
+import wandb
+from matplotlib import pyplot as plt
 
 def get_coords(nx, range = (0,1), dim=2):
     """ Get coordinates for INR evaluation
@@ -54,8 +56,22 @@ def get_inr(arch: str, arch_options: dict):
     except ModuleNotFoundError as e:
         raise ImportError(f"Could not find architecture '{arch}' in 'arch/' folder.") from e
 
+def plot_inr_data(X,Y,nrows,ncols,nchannels,title,subtitle=""):
+    """plots an image from X coordinates and Y pixel intensities."""
+    X = X.cpu().numpy()
+    Y = Y.cpu().numpy()
+    Y = np.reshape(Y, (-1, 1)) if Y.ndim == 1 else Y #make sure Y is shape (N,nchannels)
+    rows = np.round(X[:, 0] * (nrows - 1)).astype(int)
+    cols = np.round(X[:, 1] * (ncols - 1)).astype(int)
+    rows = np.clip(rows, 0, nrows - 1)
+    cols = np.clip(cols, 0, ncols - 1)
+    img = -0.1*np.ones((nrows, ncols,nchannels))
+    img[rows,cols] = Y
 
-
-
-
-
+    fig = plt.figure()
+    plt.imshow(img, vmin=-0.1, vmax=1.1, cmap="plasma")
+    if nchannels == 1: plt.colorbar()
+    plt.title(title+subtitle)
+    wandb.log({title: wandb.Image(fig)})
+    plt.close(fig)
+    return img

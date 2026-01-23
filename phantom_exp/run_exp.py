@@ -1,12 +1,12 @@
 import argparse
 import importlib
-
+import wandb
 import torch
 import numpy as np
 from PIL import Image
 import json
 
-from utils import get_fourier_sampling_mask, get_coords, get_inr
+from utils import get_fourier_sampling_mask, get_coords, get_inr, plot_inr_data
 
 def main():
     parser = argparse.ArgumentParser()
@@ -26,41 +26,55 @@ def main():
     settings_module = importlib.import_module(f"exp.{args.exp}")
     settings = settings_module.settings
 
-    print(f"\nRunning experiment: {args.exp}")
+    with wandb.init(project="middle_linear", config=settings, group="super INRs", save_code=True, job_type = "train") as run:
+        #create artifact folder for storing model
+        model_artifact = wandb.Artifact(
+            args.exp, type="model",
+            description=f"MLP for middle linear experiments.",
+            metadata=settings
+        )
 
-    print("\nLoaded settings:")
-    for k, v in settings.items():
-        print(f"{k}: {v}")
+        print(f"\nRunning experiment: {args.exp}")
 
-    inr, x, metrics = run_experiment(settings,device)
+        print("\nLoaded settings:")
+        for k, v in settings.items():
+            print(f"{k}: {v}")
 
-    print(f"\nFinished! Saving outputs.")
+        inr, x, metrics = run_experiment(settings,device)
 
-    #save inr weights
-    torch.save(inr.state_dict(), f"results/{args.exp}.pth") 
+        print(f"\nFinished! Saving outputs.")
 
-    #save rasterized inr output image (x)
-    np.save(f"results/{args.exp}.npy", x) 
+        #log trained model
+        with model_artifact.new_file("trained_model.pt",mode="wb") as file:
+            torch.save(inr.state_dict(), file)
 
-    #save final metrics as JSON file
-    with open(f"results/{args.exp}.json", "w") as f:         
-        json.dump(metrics, f, indent=4)
+        #save rasterized inr output image (x)
+        with model_artifact.new_file(f"rasterized_inr_output_image.npy",mode="wb") as file:
+            np.save(file, x) 
 
-    #also save rasterized output image as .png for easy visualization 
-    # note: this is a lossy conversion
-    img = (np.clip(x,0,1) * 255).astype(np.uint8)
-    im = Image.fromarray(img)
-    im.save(f"results/{args.exp}.png")               
+        #also save rasterized output image as .png for easy visualization 
+        # note: this is a lossy conversion
+        img = (np.clip(x,0,1) * 255).astype(np.uint8)
+        im = Image.fromarray(img)
+        with model_artifact.new_file(f"rasterized_inr_output_image.png",mode="wb") as file:
+            im.save(file)       
 
-    print(f"\nDone.")
+        #push artifact to wandb
+        print("logging trained models")
+        run.log_artifact(model_artifact)        
+
+        print(f"\nDone.")
 
 def run_experiment(settings,device):
     #load data
     phantom_name = settings["phantom_name"]
-    x0 = np.load("data/"+phantom_name+"_lowpass_1024.npy") #ideal low-pass version of phantom computed from *exact* fourier coefficients
-    x00 = np.load("data/"+phantom_name+"_rasterized_1024.npy") #hi-res rasterized phantom for reference
+    path = '/home/sueparkinson/deeprelu/super_inrs/phantom_exp/'
+    x0 = np.load(path+"data/"+phantom_name+"_lowpass_1024.npy") #ideal low-pass version of phantom computed from *exact* fourier coefficients
+    x00 = np.load(path+"data/"+phantom_name+"_rasterized_1024.npy") #hi-res rasterized phantom for reference
     x0 = torch.from_numpy(x0).float().to(device)
     x00 = torch.from_numpy(x00).float().to(device)
+
+    nchannels=1
 
     # define fourier sampling mask
     K = settings["K"] #sampling frequency cutoff
@@ -79,7 +93,7 @@ def run_experiment(settings,device):
     x1[mask] = y
     x1 = torch.real(torch.fft.ifft2(x1,norm="ortho"))
     initmse = MSE(x1,x00)
-    print(f"MSE of zero-filled IFFT: {initmse.item():>4e}")
+    wandb.log({"MSE of zero-filled IFFT": initmse.item()})
 
     # get INR coordinates
     coords_range = settings["coords_range"]
@@ -93,7 +107,7 @@ def run_experiment(settings,device):
     torch.manual_seed(settings["seed"]) #set seed for reproducibility
     inr = get_inr(settings["arch"],settings["arch_options"])
     if "arch_init_wts" in settings: #apply custom initialization if specificed
-        inr.load_state_dict(torch.load(f"wts/{settings["arch_init_wts"]}", weights_only=True))
+        inr.load_state_dict(torch.load(path+f"wts/{settings['arch_init_wts']}", weights_only=True))
         inr.eval()
     inr.register(vars) #register extra vars if needed (mainly for ffrelu_shallow INR with modified WD-reg)
     inr = inr.to(device)
@@ -119,11 +133,23 @@ def run_experiment(settings,device):
         optimizer.step()
         scheduler.step()
 
-        # print metrics
+        # log metrics
         if iter % 100 == 99:
             with torch.no_grad():
                 imgmse = MSE(x,x00)  #MSE with ground truth rasterized phantom
-                print(f"iter: {iter+1}, loss: {loss.item():>4e}, DataMSE: {mseloss.item():>4e}, WDReg: {wd_reg.item():>4e}, ImgMSE: {imgmse.item():>4e}")
+                wandb.log({
+                    "iter": iter+1,
+                    "loss": loss.item(),
+                    "DataMSE": mseloss.item(),
+                    "WDReg":wd_reg.item(),
+                    "ImgMSE":imgmse.item()
+                })
+                plot_inr_data(coords,inr(coords),
+                    nrows=nx,ncols=nx,nchannels=nchannels,
+                title=f"current INR",subtitle=f' at iter {iter}')
+                plot_inr_data(coords,1-torch.abs(inr(coords)-x00.reshape(-1,1)),
+                    nrows=nx,ncols=nx,nchannels=nchannels,
+                    title=f"errors in current INR",subtitle=f' at iter {iter}')
 
     #compute final metrics
     with torch.no_grad():
@@ -134,8 +160,19 @@ def run_experiment(settings,device):
         loss = mseloss + lam*wd_reg
         imgmse = MSE(x,x00)
 
-    print("final metrics:\n")
-    print(f"loss: {loss.item():>4e}, DataMSE: {mseloss.item():>4e}, WDReg: {wd_reg.item():>4e}, ImgMSE: {imgmse.item():>4e}")
+        wandb.log({
+            "iter": iter+1,
+            "loss": loss.item(),
+            "DataMSE": mseloss.item(),
+            "WDReg":wd_reg.item(),
+            "ImgMSE":imgmse.item()
+        })
+        plot_inr_data(coords,inr(coords),
+            nrows=nx,ncols=nx,nchannels=nchannels,
+        title=f"current INR",subtitle=f' at end of training')
+        plot_inr_data(coords,1-torch.abs(inr(coords)-x00.reshape(-1,1)),
+            nrows=nx,ncols=nx,nchannels=nchannels,
+            title=f"errors in current INR",subtitle=f' at end of training')
 
     x = x.cpu().numpy()
     metrics = {}
