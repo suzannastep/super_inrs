@@ -12,17 +12,49 @@ def get_freq_gridded(K0):
     B = B.view(-1,2)
     return B
 
-class FFReLUDeep(nn.Module):
-    def __init__(self,B,width,depth):
+def ML_Lambda_valid(Lambda,layers):
+    if layers < 2:
+        return False
+    else:
+        if layers <=  2 * Lambda + 1:
+            return False
+        elif Lambda < 1:
+            return False
+        else:
+            return True
+
+class FFMiddleLinearDeep(nn.Module):
+    def __init__(self,B,width,depth,Lambda):
         super().__init__()
         # self.B = B #fourier features frequencies matrix, size [nfreq,2]
         self.register_buffer("B", B) #fourier features frequencies matrix, size [nfreq,2]
         self.width = width
         self.depth = depth
-        # define ReLU MLP
+        self.Lambda = Lambda
+
+        if not ML_Lambda_valid(Lambda,depth):
+            raise ValueError(f"ML-{Lambda} with depth {depth} is not valid. Must have Lambda >=1 and depth >=  2 * Lambda + 1.")
+
+
+        # define MLP
+        #input layer
         layers = [nn.Linear(2*B.shape[0]+1, width, bias=False), nn.ReLU()]
-        for i in range(depth-2):
+
+        #relus at start
+        for l in range(Lambda-1):
             layers += [nn.Linear(width,width), nn.ReLU()]
+
+        #middle linear portion
+        for l in range(depth - 2 * Lambda - 1):
+            layers += [nn.Linear(width,width,bias=False)]
+
+        layers.append(nn.Linear(width,width,bias=True))
+        layers.append(nn.ReLU())
+
+        #relus at end
+        for l in range(Lambda-1):
+            layers += [nn.Linear(width,width), nn.ReLU()]
+
         layers += [nn.Linear(width,1)]
         self.MLP = nn.Sequential(*layers)
         
@@ -37,8 +69,9 @@ class FFReLUDeep(nn.Module):
 
     def weight_decay(self):
         wdloss = 0
-        for k in range(0,2*self.depth,2):
-            wdloss += 0.5*(self.MLP[k].weight**2).sum()
+        for layer in self.MLP:
+            if isinstance(layer, nn.Linear):
+                wdloss += 0.5 * (layer.weight ** 2).sum()
         return wdloss
     
     def register(self,vars): #no extra variables to register
@@ -54,5 +87,6 @@ def build(arch_options):
 
     width = arch_options["width"]
     depth = arch_options["layers"]
+    Lambda = arch_options["Lambda"]
 
-    return FFReLUDeep(B,width,depth)
+    return FFMiddleLinearDeep(B,width,depth,Lambda)

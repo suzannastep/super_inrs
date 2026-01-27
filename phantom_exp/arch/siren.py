@@ -121,7 +121,7 @@ class Siren(nn.Module):
 
 def build(arch_options):
     in_features = 2
-    depth = arch_options["depth"]
+    depth = arch_options["layers"]
     hidden_features = arch_options["width"]
     hidden_layers = depth-1
     out_features = 1
