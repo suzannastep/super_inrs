@@ -32,6 +32,7 @@ def main():
     parser.add_argument("--step_size", type=int, default=40000, help = "how frequently to decay learning rate")
     parser.add_argument("--gamma", type=float, default=0.1, help = "how much to decay learning rate")
     parser.add_argument("--logfreq", type=int, default=100, help = "frequency of wandb logging. log every 'logfreq' epochs.")
+    parser.add_argument("--clip_grad_norm", type=float,default=0.0, help="Norm to which gradients should be clipped. If zero (default), no clipping is performed.")
     parser.add_argument('--device', required=False, help="Device to use: 'cuda:0', 'cuda:1', etc, or 'cpu'. Defaults to GPU 0 if available.")
     args = parser.parse_args()
 
@@ -166,6 +167,8 @@ def run_experiment(settings,device):
         loss = mseloss + lam*wd_reg
 
         loss.backward()
+        if settings["clip_grad_norm"] > 0:
+            torch.nn.utils.clip_grad_norm_(inr.parameters(), max_norm=settings["clip_grad_norm"])  # Gradient clipping
         optimizer.step()
         scheduler.step()
 
