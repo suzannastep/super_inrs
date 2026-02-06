@@ -15,7 +15,7 @@ def main():
     #set up config
     parser = argparse.ArgumentParser()
     #config for data set up
-    parser.add_argument("--datapath", type=str, help = "path to wandb artifact containing presaved data")
+    parser.add_argument("--datapath", type=str, default="PWC_BRAIN", help = "path to wandb artifact containing presaved data")
     parser.add_argument("--nx", type=int, default=1024, help = "recon grid size")
     parser.add_argument("--K", type=int, default=64, help = "sampling frequency cutoff")
     #config for network
@@ -25,6 +25,7 @@ def main():
     parser.add_argument("--K0", type=int, default=10, help = "fourier features grid size")
     parser.add_argument("--ff_freq", type=str, default="gridded", help = "what kind of fourier features to use")
     #config for training
+    parser.add_argument("--optimizer", type=str, default=adam, help = "optimization method")
     parser.add_argument("--seed", type=int, default=4, help = "seed for initialization")
     parser.add_argument("--wd", type=float, help = "regularization parameter")
     parser.add_argument("--epochs", type=int, default=50000, help = "number of epochs to train for")
@@ -148,8 +149,18 @@ def run_experiment(settings,device):
     print(f"architecture is \n{inr}")
 
     # define optimizer
-    optimizer = torch.optim.Adam(inr.parameters(),lr=settings["lr"])
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer,step_size=settings["step_size"],gamma=settings["gamma"])
+    if settings["optimizer"] == "adam":
+        optimizer = torch.optim.Adam(inr.parameters(),lr=settings["lr"])
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer,step_size=settings["step_size"],gamma=settings["gamma"])
+    elif settings["optimizer"] == "sgd":
+        optimizer = torch.optim.SGD(inr.parameters(), lr=settings["lr"])
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer,step_size=settings["step_size"],gamma=settings["gamma"])
+    elif settings["optimizer"] == "adam_cosine":
+        optimizer = torch.optim.Adam(inr.parameters(), lr=settings["lr"])
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=settings["step_size"])
+    elif settings["optimizer"] == "sgd_cosine":
+        optimizer = torch.optim.SGD(inr.parameters(), lr=settings["lr"])
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=settings["step_size"])
 
     lam = settings["wd"]
     epochs = settings["epochs"]
