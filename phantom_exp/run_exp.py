@@ -38,9 +38,7 @@ def main():
 
     settings = vars(args)
 
-    if args.layers == 2:
-        settings["arch"] = "ffrelu_shallow"
-    elif args.Lambda == 0:
+    if args.Lambda == 0:
         settings["arch"] = "ffrelu_deep"
     else:
         settings["arch"] = "ffmidlin_deep"

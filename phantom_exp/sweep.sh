@@ -1,14 +1,15 @@
 #!/bin/bash
 
-#SBATCH --job-name=super-inr
+#SBATCH --job-name=wandb
 #SBATCH --partition=general
 #SBATCH --gres=gpu:1
 #SBATCH --output=/net/projects/willettlab/sueparkinson/deeprelu/newmiddlelinear/log/%j.out
 #SBATCH --error=/net/projects/willettlab/sueparkinson/deeprelu/newmiddlelinear/log/%j.out
+#SBATCH --mem=16G
 
 cd /net/projects/willettlab/sueparkinson/deeprelu/newmiddlelinear
 
-# Activate conda env
+# Activate your conda env
 source /home/sueparkinson/miniconda3/etc/profile.d/conda.sh
 conda activate cluster_startup
 
@@ -19,14 +20,8 @@ echo "    Host list: ${SLURM_JOB_NODELIST}"
 echo "    CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES}"
 which python
 
-srun python /home/sueparkinson/deeprelu/super_inrs/phantom_exp/run_exp.py \
-    --datapath=PWC_BRAIN \
-    --Lambda=0 \
-    --layers=3 \
-    --wd=0 \
-    --clip_grad_norm=0.25
-
-# srun python /home/sueparkinson/deeprelu/super_inrs/phantom_exp/save_data.py --datapath=PWC_BRAIN
+srun "$@"
 
 #usage: 
-# sbatch submit.sh
+# sbatch sweep.sh __pasted_launch_agent_command__
+# can do run the same command multiple times from the login node to do the sweep on multiple GPUs

@@ -1,0 +1,43 @@
+program: /home/sueparkinson/deeprelu/super_inrs/phantom_exp/run_exp.py
+method: grid
+metric:
+  goal: minimize
+  name: Validation_MSE #TODO update
+parameters:
+  datapath:
+    value: PWC_BRAIN
+  Lambda:
+    values:
+    - 0
+    - 1
+    - 2
+    - 3
+  layers:
+    values:
+    - 15
+    - 10
+    - 8
+    - 7
+    - 5
+    - 3
+    - 2
+  wd:
+    values:
+    - 0
+    # - TODO
+  clip_grad_norm:
+    values:
+    - 0.25
+    # - TODO
+  # lr:
+  #   values:
+  #   - 1e-3
+  #   - TODO
+  # optimizer: #TODO INCORPORATE
+  #   values:
+  #   - adam
+  #   - sgd
+  #   - adam_cosine
+  #   - sgd_cosine
+  epochs:
+    value: 50 #50000
