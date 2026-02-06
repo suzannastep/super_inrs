@@ -5,8 +5,22 @@ import torch
 import numpy as np
 from PIL import Image
 import json
-
 from utils import get_fourier_sampling_mask, get_coords, get_inr, plot_inr_data
+from torch.utils.data import random_split
+
+def train_validate_split(seed,mask,split=0.8):
+    torch.manual_seed(seed)    
+    N = mask.shape
+    train_size = int(split * N)
+    validate_size = N - train_size
+
+    # Split indices for train/test
+    indices = torch.randperm(N)
+    train_idx = indices[:train_size]
+    validate_idx = indices[train_size:]
+
+    return train_idx, validate_idx
+
 
 def get_str(datapath,Lambda,layers,wd):
     return f"{datapath}Lam{Lambda}L{layers}wd{wd}"
@@ -18,6 +32,8 @@ def main():
     parser.add_argument("--datapath", type=str, default="PWC_BRAIN", help = "path to wandb artifact containing presaved data")
     parser.add_argument("--nx", type=int, default=1024, help = "recon grid size")
     parser.add_argument("--K", type=int, default=64, help = "sampling frequency cutoff")
+    parser.add_argument("--datasplitseed", type=int, default=252, help = "random seed for train/validate split")
+    parser.add_argument("--datasplit", type=float, default=0.8, help = "proportion of data to use for training")
     #config for network
     parser.add_argument("--Lambda", type=int, help = "number of ReLU layers at start and end of network. Should be 0 for a deep ReLU network")
     parser.add_argument("--layers", type=int, help = "total number of neural network layers")
@@ -115,9 +131,12 @@ def run_experiment(settings,device):
     nx = settings["nx"] #recon grid size
     res = (nx,nx) #image resolution over which to perform FFTs
     mask = get_fourier_sampling_mask(nx,K)
+    train_idx, validate_idx = train_validate_split(settings['datasplitseed'],mask,split=settings['datasplit'])
 
     # get measurement vector y
     y = torch.fft.fft2(x0,norm="ortho")[mask]  #low-pass Fourier coefficients
+    y_train = y[train_idx]
+    y_validate = y[validate_idx]
 
     # define MSE metric
     MSE = torch.nn.MSELoss()
@@ -171,7 +190,8 @@ def run_experiment(settings,device):
 
         x = inr(coords).view(res)
         Ax = torch.fft.fft2(x,norm="ortho")[mask]
-        mseloss = MSE(torch.real(Ax),torch.real(y))+MSE(torch.imag(Ax),torch.imag(y))
+        mseloss = MSE(torch.real(Ax[train_idx]),torch.real(y_train))+MSE(torch.imag(Ax[train_idx]),torch.imag(y_train))
+        validation_loss = MSE(torch.real(Ax[validate_idx]),torch.real(y_validate))+MSE(torch.imag(Ax[validate_idx]),torch.imag(y_validate))
         wd_reg = inr.weight_decay()
         loss = mseloss + lam*wd_reg
 
@@ -189,6 +209,7 @@ def run_experiment(settings,device):
                     "iter": iter+1,
                     "loss": loss.item(),
                     "DataMSE": mseloss.item(),
+                    "ValidateMSE":validation_loss.item(),
                     "WDReg":wd_reg.item(),
                     "ImgMSE":imgmse.item()
                 })
@@ -203,7 +224,8 @@ def run_experiment(settings,device):
     with torch.no_grad():
         x = inr(coords).view(res)
         Ax = torch.fft.fft2(x,norm="ortho")[mask]
-        mseloss = MSE(torch.real(Ax),torch.real(y))+MSE(torch.imag(Ax),torch.imag(y))
+        mseloss = MSE(torch.real(Ax[train_idx]),torch.real(y_train))+MSE(torch.imag(Ax[train_idx]),torch.imag(y_train))
+        validation_loss = MSE(torch.real(Ax[validate_idx]),torch.real(y_validate))+MSE(torch.imag(Ax[validate_idx]),torch.imag(y_validate))        
         wd_reg = inr.weight_decay()
         loss = mseloss + lam*wd_reg
         imgmse = MSE(x,x00)
@@ -212,6 +234,7 @@ def run_experiment(settings,device):
             "iter": iter+1,
             "loss": loss.item(),
             "DataMSE": mseloss.item(),
+            "ValidateMSE":validation_loss.item(),
             "WDReg":wd_reg.item(),
             "ImgMSE":imgmse.item()
         })
