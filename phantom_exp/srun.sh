@@ -23,5 +23,6 @@ which python
 srun "$@"
 
 #usage: 
-# sbatch sweep.sh __pasted_launch_agent_command__
+# sbatch srun.sh __pasted_launch_agent_command__
+# sbatch srun.sh command_to_run_on_server
 # can do run the same command multiple times from the login node to do the sweep on multiple GPUs

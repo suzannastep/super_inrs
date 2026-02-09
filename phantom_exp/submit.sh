@@ -19,7 +19,7 @@ echo "    Host list: ${SLURM_JOB_NODELIST}"
 echo "    CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES}"
 which python
 
-srun python /home/sueparkinson/deeprelu/super_inrs/phantom_exp/run_exp.py \
+srun python /home/sueparkinson/deeprelu/super_inrs/phantom_exp/train.py \
     --datapath=PWC_BRAIN \
     --Lambda=0 \
     --layers=3 \
