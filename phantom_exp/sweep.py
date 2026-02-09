@@ -85,7 +85,7 @@ if __name__ == "__main__":
         },
         "parameters": {
             "epochs": {
-                "value":500#50000 #TODO CHANGE
+                "value":50000
             }
         }
     }
