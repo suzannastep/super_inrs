@@ -77,7 +77,7 @@ if __name__ == "__main__":
     }
 
     SWEEP_TEMPLATE = {
-        "program": "/home/sueparkinson/deeprelu/suƒper_inrs/phantom_exp/run_exp.py",
+        "program": "/home/sueparkinson/deeprelu/super_inrs/phantom_exp/run_exp.py",
         "method": "bayes",
         "metric": {
             "goal": "minimize",
